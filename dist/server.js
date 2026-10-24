@@ -3,6 +3,7 @@ import { execTool } from "./tools/types.js";
 import { agentTools } from "./tools/agent.js";
 import { sessionTools } from "./tools/session.js";
 import { paneTools } from "./tools/pane.js";
+import { layoutTools } from "./tools/layout.js";
 import { tabTools, workspaceTools } from "./tools/workspace.js";
 import { integrationTools } from "./tools/integration.js";
 import { compositeTools } from "./tools/composite.js";
@@ -11,6 +12,7 @@ const allTools = [
     ...agentTools,
     ...sessionTools,
     ...paneTools,
+    ...layoutTools,
     ...tabTools,
     ...workspaceTools,
     ...integrationTools,

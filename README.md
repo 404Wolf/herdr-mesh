@@ -265,6 +265,13 @@ you to type.
 - `herdr_pane_list` / `get` / `read` / `split` / `run` / `send_text` / `send_keys` / `close` / `rename`
 - Use `herdr_pane_run` to type a command **and** press Enter; use `*_send_text` for literal text.
 
+**Position, focus & layout** (pane args default to the calling agent's own pane)
+- `herdr_where` — the caller's own pane/tab/workspace and the one the user has focused
+- `herdr_pane_neighbor` / `herdr_pane_edges` / `herdr_pane_layout` — "the pane to my right", which edges a pane touches, every pane's rect
+- `herdr_pane_focus` — move the user's focus left/right/up/down
+- `herdr_pane_swap` / `herdr_pane_move` — swap panes, or move one into another tab, a new tab, or a new workspace (processes keep running)
+- `herdr_pane_resize` / `herdr_pane_zoom`
+
 **Tabs & workspaces**
 - `herdr_tab_*` — list / create / get / focus / rename / close
 - `herdr_workspace_*` — list / create / get / focus / rename / close

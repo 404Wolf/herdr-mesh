@@ -77,7 +77,7 @@ export const paneTools = [
     },
     {
         name: "herdr_pane_close",
-        description: "Close a pane.",
+        description: "Close a pane (terminates its processes). Re-check the target with herdr_pane_get first; never close your own pane unless asked.",
         inputSchema: { pane_id: z.string() },
         buildArgs: (a) => ["pane", "close", String(a.pane_id)],
     },
