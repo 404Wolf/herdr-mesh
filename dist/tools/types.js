@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { runHerdr, HerdrError } from "../herdr.js";
+import { redirectMoved } from "../migrate.js";
 import { backendForContainer, backendForTarget, explicitBackend, preferredBackend, } from "../core.js";
 /** Route by a terminal/pane/agent argument (falls back to the default when absent). */
 export const byTarget = (...keys) => async (a) => {
@@ -36,25 +37,31 @@ export function formatResult(result) {
 }
 /** Execute a ToolDef: run custom handler, or build argv + run herdr. */
 export async function execTool(tool, args) {
+    // Old TUI ids that the migration moved to herdr-core: use the new terminal/space.
+    const { args: a, notes } = await redirectMoved(args);
+    const withNotes = (r) => notes.length ? { ...r, content: [{ type: "text", text: notes.join("\n") }, ...r.content] } : r;
     try {
-        if (tool.handle)
-            return await tool.handle(args);
-        const backend = await (tool.pick ?? byTarget())(args);
-        if (backend === "core") {
-            if (!tool.core)
-                unsupported(`${tool.name} is a Herdr TUI tool`);
-            return await tool.core(args);
-        }
-        if (tool.run)
-            return await tool.run(args);
-        const argv = tool.buildArgs(args);
-        const result = await runHerdr(argv, { timeoutMs: tool.timeoutMs });
-        return ok(formatResult(result));
+        return withNotes(await dispatch(tool, a));
     }
     catch (err) {
         const message = err instanceof HerdrError || err instanceof Error ? err.message : String(err);
-        return { content: [{ type: "text", text: message }], isError: true };
+        return withNotes({ content: [{ type: "text", text: message }], isError: true });
     }
+}
+async function dispatch(tool, args) {
+    if (tool.handle)
+        return tool.handle(args);
+    const backend = await (tool.pick ?? byTarget())(args);
+    if (backend === "core") {
+        if (!tool.core)
+            unsupported(`${tool.name} is a Herdr TUI tool`);
+        return tool.core(args);
+    }
+    if (tool.run)
+        return tool.run(args);
+    const argv = tool.buildArgs(args);
+    const result = await runHerdr(argv, { timeoutMs: tool.timeoutMs });
+    return ok(formatResult(result));
 }
 /** Common reusable schema fragments. */
 export const targetSchema = z

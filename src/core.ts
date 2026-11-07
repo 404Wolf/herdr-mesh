@@ -18,8 +18,8 @@ const CORE_ADDRESS = /^([A-Za-z0-9][\w.-]*\/)?t\d+[a-z0-9]*$/;
 const APP_PANE = /^([\w.-]+\/)?p[0-9a-f]{16,}$/;
 const APP_TAB = /^([\w.-]+\/)?tb[0-9a-z]{4,}$/;
 const APP_SPACE = /^([\w.-]+\/)?sp[0-9a-z]{4,}$/;
-/** TUI ids: workspaces `w6`, panes/tabs `w6:pQ`, terminals `term_…`. */
-const TUI_ID = /^(w\d+(:.*)?|term_.+)$/;
+/** TUI ids: workspaces `w6` / `w8R`, panes/tabs `w6:pQ`, terminals `term_…`. */
+const TUI_ID = /^(w\d[0-9A-Za-z]*(:.*)?|term_.+)$/;
 
 /** Default backend when nothing in the call decides it. */
 export function preferredBackend(): Backend {

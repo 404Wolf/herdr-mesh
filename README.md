@@ -126,6 +126,17 @@ migration:
    (`HC_TERMINAL_ID` is set), else the TUI. `HERDR_MESH_BACKEND=core|tui`
    overrides this default.
 
+**Migrated panes.** A TUI-to-herdr-core migration script records each moved pane in
+`~/.local/state/herdr-migrate/moved.json` (`$XDG_STATE_HOME`; override the path with
+`HERDR_MIGRATE_MAP`): `{"w8R:p1": {"terminal": "t1", "machine": "local", "space": …, "tab": …}}`.
+Any tool given an old TUI pane id (`target`, `pane_id`, `source_pane`, `target_pane`)
+that is no longer a live TUI pane but is in that file uses the herdr-core terminal
+instead; an old workspace id (`workspace`, `workspace_id`) maps to the app space of
+its moved panes. A `<machine>/t1` address is shortened to `t1` when this machine's hc
+sees the same terminal. The result starts with a `[herdr-mesh] … migrated to …` line
+so the agent learns the new id. The file is re-read on every call; `backend: "tui"`
+skips the redirect.
+
 `herdr_agent_list` lists both (`herdr_core` and `herdr_tui` sections). Inside a
 herdr-core terminal, hc talks to the core that runs it (`HC_TERMINAL_SOCKET`).
 
