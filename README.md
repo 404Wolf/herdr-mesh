@@ -2,6 +2,8 @@
 
 An MCP server for orchestrating multi-agent workflows inside [herdr](https://herdr.dev),
 enabling real-time communication, pane management, and contextual handoffs.
+Works with herdr-core (`hc`) plus the Herdr desktop app, and with the older Herdr
+TUI — see [herdr-core and the Herdr app](#herdr-core-and-the-herdr-app).
 
 > 한국어: [README.ko.md](./README.ko.md)
 
@@ -100,17 +102,77 @@ to a specific agent type. Use `herdr_integration_status` to see what's available
 ## How it works
 
 ```
-MCP client ──stdio(MCP)──> herdr-mesh ──exec "herdr …"──> herdr CLI ──socket──> herdr server
+MCP client ──stdio(MCP)──> herdr-mesh ─┬─exec "hc …"────────> herdr-core (terminals)
+                                       ├─exec "herdr-app …"─> Herdr app (spaces, tabs, panes)
+                                       └─exec "herdr …"─────> Herdr TUI (legacy)
 ```
 
-Each tool runs the `herdr` CLI as a subprocess and returns its JSON output. No separate
-protocol implementation — herdr's own version/protocol handling stays authoritative.
+Each tool runs a CLI as a subprocess and returns its JSON output. No separate
+protocol implementation — the CLIs' own version/protocol handling stays
+authoritative. (Reading the app's split layout uses `hc connect` for one
+`doc.get` call.)
+
+## herdr-core and the Herdr app
+
+herdr-mesh works with both runtimes and picks one **per call**, so agents in Herdr
+TUI panes and agents in herdr-core terminals can work side by side during a
+migration:
+
+1. A `backend` argument (`core` / `tui`) on any tool forces one.
+2. Otherwise the target's id decides: `t7`, `vps/t7` and app ids (`p…`, `tb…`,
+   `sp…`) are herdr-core; `w1`, `w1:p2`, `term_…` are the TUI. Names are looked
+   up in both (`hc get`, then `herdr agent/pane get`, or the reverse).
+3. Otherwise: herdr-core when the agent runs in a herdr-core terminal
+   (`HC_TERMINAL_ID` is set), else the TUI. `HERDR_MESH_BACKEND=core|tui`
+   overrides this default.
+
+`herdr_agent_list` lists both (`herdr_core` and `herdr_tui` sections). Inside a
+herdr-core terminal, hc talks to the core that runs it (`HC_TERMINAL_SOCKET`).
+
+How the TUI concepts map onto herdr-core:
+
+| TUI | herdr-core |
+|---|---|
+| agent / pane | terminal (`t7` or its name); an app pane id also works |
+| workspace | app space (`sp…`) |
+| tab | app tab (`tb…`) |
+| `agent read`, `pane read` | `hc read` (`visible` = screen, `recent` = with history) |
+| `relay`, `pane run` | `hc send` (paste + Enter) |
+| `handoff` | `hc send --wait`, then `hc read` |
+| `agent wait` | `hc wait` / `hc get` (status from OSC 7501; `idle` matches idle or done) |
+| `wait output` | `hc wait --output` (output after the wait starts; regex is polled) |
+| `pane send_keys` | `hc keys` (`ctrl-c` becomes `ctrl+c`) |
+| `agent start` | `hc run --bg` as your child; with `workspace`/`tab`/`split` it is started without a parent and labelled `herdr.space`/`herdr.tab`, so the app gives it a pane |
+| `pane close` | `hc kill` + `hc rm` |
+| `pane split`, `zoom`, tabs, workspaces | `herdr-app do pane.split / pane.zoom / tab.* / space.*` |
+| `pane layout / neighbor / edges / focus` | computed from the app's layout document, then `pane.focus` |
+| `pane swap` | `pane.focus` + `pane.swap` (checked against the layout afterwards) |
+| `pane move` | `terminal.park`, relabel `herdr.space`/`herdr.tab`, the app adopts it (the process keeps running) |
+| `session list` | `hc server status` |
+| `integration status` | `hc templates` |
+
+Not available on herdr-core (these return a clear error): typing text without
+Enter (`herdr_agent_send`, `herdr_pane_send_text`, `herdr_relay submit=false`);
+renaming terminals (`herdr_agent_rename`, `herdr_pane_rename`: name them at
+creation, or rename the tab); `herdr_pane_resize`; `herdr_pane_zoom` on/off
+(toggle only); `herdr_session_stop/delete`; swapping panes that aren't adjacent
+or are in different tabs. Moving into an existing tab ignores
+`split`/`target_pane`/`ratio` (the app places it). `herdr_pane_swap` needs the
+Herdr window on screen (the app swaps by the panes it last drew); it reports
+when nothing moved.
+
+Tab, workspace, layout and focus tools need the Herdr app open; terminal tools
+(list, read, send, wait, start, close) need only the core.
 
 ## Requirements
 
 - Node.js 18+
-- [herdr](https://herdr.dev) installed and a server running (`herdr status` shows `running`).
-  Set `HERDR_BIN` if `herdr` is not on `PATH`.
+- One or both of:
+  - [herdr-core](https://herdr.dev) (`hc`, a core running: `hc server status`) and,
+    for spaces/tabs/panes, the Herdr desktop app (`herdr-app`) open.
+    Set `HC_BIN` / `HERDR_APP_BIN` if they are not on `PATH`.
+  - the Herdr TUI (`herdr status` shows `running`). Set `HERDR_BIN` if `herdr` is
+    not on `PATH`.
 
 ## Install (recommended)
 
@@ -239,7 +301,7 @@ The agent chains `herdr_agent_start` → `herdr_agent_send` → `herdr_agent_wai
 ## Tools (reference for the LLM)
 
 These are the tool names exposed to the agent — listed here for reference, not for
-you to type.
+you to type. Every tool also takes an optional `backend` (`auto` / `core` / `tui`).
 
 **Agent messaging & context (core)**
 - `herdr_relay` — deliver a message to an agent **and submit it** (types + Enter).
@@ -249,7 +311,7 @@ you to type.
 - `herdr_agent_list` — list agents with state (idle/working/blocked/done)
 - `herdr_agent_get` — agent details
 - `herdr_agent_read` — read another agent's pane output (context handoff)
-- `herdr_agent_send` — low-level: type literal text to an agent (no Enter)
+- `herdr_agent_send` — low-level: type literal text to an agent (no Enter; TUI only)
 - `herdr_agent_wait` — block until an agent reaches a status
 - `herdr_wait_output` — block until a pane's output matches text/regex
 
