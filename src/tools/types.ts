@@ -1,5 +1,12 @@
 import { z, type ZodRawShape } from "zod";
 import { runHerdr, HerdrError } from "../herdr.js";
+import {
+  type Backend,
+  backendForContainer,
+  backendForTarget,
+  explicitBackend,
+  preferredBackend,
+} from "../core.js";
 
 export interface ToolDef {
   name: string;
@@ -11,6 +18,43 @@ export interface ToolDef {
   run?: (args: Record<string, unknown>) => Promise<ToolResult>;
   /** Optional per-tool timeout (ms); falls back to runHerdr default. */
   timeoutMs?: number;
+  /** herdr-core (hc + Herdr app) handler. Absent: the tool only works on the TUI. */
+  core?: (args: Record<string, unknown>) => Promise<ToolResult>;
+  /** Pick the backend for a call (default: `backend` arg, else HC_TERMINAL_ID decides). */
+  pick?: (args: Record<string, unknown>) => Promise<Backend>;
+  /** Handles both backends itself (no routing). */
+  handle?: (args: Record<string, unknown>) => Promise<ToolResult>;
+}
+
+/** Route by a terminal/pane/agent argument (falls back to the default when absent). */
+export const byTarget =
+  (...keys: string[]) =>
+  async (a: Record<string, unknown>): Promise<Backend> => {
+    for (const k of keys) {
+      if (typeof a[k] === "string" && a[k]) return backendForTarget(String(a[k]), a);
+    }
+    return explicitBackend(a) ?? preferredBackend();
+  };
+
+/** Route by a tab or workspace id argument. */
+export const byContainer =
+  (...keys: string[]) =>
+  async (a: Record<string, unknown>): Promise<Backend> => {
+    const id = keys.map((k) => a[k]).find((v) => typeof v === "string" && v) as string | undefined;
+    return backendForContainer(id, a);
+  };
+
+/** The `backend` argument when it forces one. */
+export const explicit = (a: Record<string, unknown>) => explicitBackend(a);
+
+/** Throw from a core handler when herdr-core has no equivalent. */
+export function unsupported(what: string): never {
+  throw new HerdrError(`not supported on herdr-core: ${what}`);
+}
+
+/** Pretty JSON result. */
+export function okJson(value: unknown): ToolResult {
+  return ok(JSON.stringify(value, null, 2));
 }
 
 export interface ToolResult {
@@ -37,12 +81,18 @@ export async function execTool(
   args: Record<string, unknown>,
 ): Promise<ToolResult> {
   try {
+    if (tool.handle) return await tool.handle(args);
+    const backend = await (tool.pick ?? byTarget())(args);
+    if (backend === "core") {
+      if (!tool.core) unsupported(`${tool.name} is a Herdr TUI tool`);
+      return await tool.core(args);
+    }
     if (tool.run) return await tool.run(args);
     const argv = tool.buildArgs!(args);
     const result = await runHerdr(argv, { timeoutMs: tool.timeoutMs });
     return ok(formatResult(result));
   } catch (err) {
-    const message = err instanceof HerdrError ? err.message : String(err);
+    const message = err instanceof HerdrError || err instanceof Error ? err.message : String(err);
     return { content: [{ type: "text", text: message }], isError: true };
   }
 }
@@ -51,7 +101,14 @@ export async function execTool(
 export const targetSchema = z
   .string()
   .describe(
-    "Agent target: terminal id, unique agent name, detected/reported agent label, or legacy pane id.",
+    "Agent target: herdr-core terminal address (t7, vps/t7) or name, Herdr app pane id, or Herdr TUI terminal id / agent name / label / pane id.",
+  );
+
+export const backendSchema = z
+  .enum(["auto", "core", "tui"])
+  .optional()
+  .describe(
+    "Force a backend: core = herdr-core (hc + Herdr app), tui = Herdr TUI (herdr). Default auto: by the target's id, else herdr-core when this agent runs in a herdr-core terminal (HC_TERMINAL_ID).",
   );
 
 export const sourceSchema = z

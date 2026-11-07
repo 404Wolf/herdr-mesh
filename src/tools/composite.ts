@@ -1,6 +1,15 @@
 import { z } from "zod";
-import { runHerdr } from "../herdr.js";
-import { type ToolDef, type ToolResult, ok, formatResult, targetSchema } from "./types.js";
+import { runHc, runHerdr } from "../herdr.js";
+import { hcRead, hcWaitStatus, statusWord, terminalOf } from "../core.js";
+import {
+  type ToolDef,
+  type ToolResult,
+  ok,
+  formatResult,
+  targetSchema,
+  byTarget,
+  unsupported,
+} from "./types.js";
 
 /** Recursively find the first `pane_id` value in a parsed herdr JSON response. */
 function findPaneId(node: unknown): string | undefined {
@@ -59,6 +68,13 @@ export const compositeTools: ToolDef[] = [
       return ok(
         `Delivered to "${target}"${submit ? " and submitted (Enter)" : " (not submitted)"}.`,
       );
+    },
+    pick: byTarget("target"),
+    core: async (a): Promise<ToolResult> => {
+      if (a.submit === false) unsupported("typing without Enter (hc send always submits)");
+      const t = await terminalOf(String(a.target));
+      const r = await runHc(["send", t, String(a.text)], { timeoutMs: 60_000 });
+      return ok(`Delivered to "${t}" and submitted (Enter).\n${formatResult(r)}`);
     },
   },
   {
@@ -120,6 +136,30 @@ export const compositeTools: ToolDef[] = [
         "text",
       ]);
       return ok(`# Handoff to "${target}" — ${waitNote}\n\n${formatResult(read)}`);
+    },
+    pick: byTarget("target"),
+    core: async (a): Promise<ToolResult> => {
+      const t = await terminalOf(String(a.target));
+      const status = (a.wait_status as string) ?? "idle";
+      const timeout = (a.timeout_ms as number) ?? 120_000;
+      const lines = (a.read_lines as number) ?? 200;
+      const started = Date.now();
+      let waitNote: string;
+      if (status === "idle" || status === "done") {
+        // send --wait waits for the turn this message starts, not just "not working now".
+        const secs = Math.max(1, Math.ceil(timeout / 1000));
+        const r = await runHc(["send", "--wait", "--timeout", String(secs), t, String(a.message)], {
+          timeoutMs: timeout + 30_000,
+        });
+        const res = r.json as { status?: string | null; reason?: string; ended?: boolean } | undefined;
+        waitNote = `turn ended: ${JSON.stringify(res ?? r.stdout.trim())}`;
+      } else {
+        await runHc(["send", t, String(a.message)], { timeoutMs: 60_000 });
+        const w = await hcWaitStatus(t, status, Math.max(1000, timeout - (Date.now() - started)));
+        waitNote = w.reached ? `reached ${status}` : `did not reach ${status} (status ${statusWord(w.terminal) ?? "none"})`;
+      }
+      const text = await hcRead(t, "visible", lines);
+      return ok(`# Handoff to "${t}" — ${waitNote}\n\n${text}`);
     },
   },
 ];

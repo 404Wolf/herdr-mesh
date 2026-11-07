@@ -1,5 +1,29 @@
 import { z } from "zod";
 import { runHerdr, HerdrError } from "../herdr.js";
+import { backendForContainer, backendForTarget, explicitBackend, preferredBackend, } from "../core.js";
+/** Route by a terminal/pane/agent argument (falls back to the default when absent). */
+export const byTarget = (...keys) => async (a) => {
+    for (const k of keys) {
+        if (typeof a[k] === "string" && a[k])
+            return backendForTarget(String(a[k]), a);
+    }
+    return explicitBackend(a) ?? preferredBackend();
+};
+/** Route by a tab or workspace id argument. */
+export const byContainer = (...keys) => async (a) => {
+    const id = keys.map((k) => a[k]).find((v) => typeof v === "string" && v);
+    return backendForContainer(id, a);
+};
+/** The `backend` argument when it forces one. */
+export const explicit = (a) => explicitBackend(a);
+/** Throw from a core handler when herdr-core has no equivalent. */
+export function unsupported(what) {
+    throw new HerdrError(`not supported on herdr-core: ${what}`);
+}
+/** Pretty JSON result. */
+export function okJson(value) {
+    return ok(JSON.stringify(value, null, 2));
+}
 /** Wrap arbitrary text as a successful tool result. */
 export function ok(text) {
     return { content: [{ type: "text", text: text || "(no output)" }] };
@@ -13,6 +37,14 @@ export function formatResult(result) {
 /** Execute a ToolDef: run custom handler, or build argv + run herdr. */
 export async function execTool(tool, args) {
     try {
+        if (tool.handle)
+            return await tool.handle(args);
+        const backend = await (tool.pick ?? byTarget())(args);
+        if (backend === "core") {
+            if (!tool.core)
+                unsupported(`${tool.name} is a Herdr TUI tool`);
+            return await tool.core(args);
+        }
         if (tool.run)
             return await tool.run(args);
         const argv = tool.buildArgs(args);
@@ -20,14 +52,18 @@ export async function execTool(tool, args) {
         return ok(formatResult(result));
     }
     catch (err) {
-        const message = err instanceof HerdrError ? err.message : String(err);
+        const message = err instanceof HerdrError || err instanceof Error ? err.message : String(err);
         return { content: [{ type: "text", text: message }], isError: true };
     }
 }
 /** Common reusable schema fragments. */
 export const targetSchema = z
     .string()
-    .describe("Agent target: terminal id, unique agent name, detected/reported agent label, or legacy pane id.");
+    .describe("Agent target: herdr-core terminal address (t7, vps/t7) or name, Herdr app pane id, or Herdr TUI terminal id / agent name / label / pane id.");
+export const backendSchema = z
+    .enum(["auto", "core", "tui"])
+    .optional()
+    .describe("Force a backend: core = herdr-core (hc + Herdr app), tui = Herdr TUI (herdr). Default auto: by the target's id, else herdr-core when this agent runs in a herdr-core terminal (HC_TERMINAL_ID).");
 export const sourceSchema = z
     .enum(["visible", "recent", "recent-unwrapped"])
     .optional()

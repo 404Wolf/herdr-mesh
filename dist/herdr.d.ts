@@ -1,5 +1,5 @@
 export interface HerdrResult {
-    /** Parsed JSON object when herdr emitted JSON, otherwise undefined. */
+    /** Parsed JSON object when the CLI emitted JSON, otherwise undefined. */
     json?: unknown;
     /** Raw stdout text (always present). */
     stdout: string;
@@ -10,7 +10,7 @@ export declare class HerdrError extends Error {
     constructor(message: string);
 }
 /**
- * Run a herdr CLI command and return its output.
+ * Run a Herdr TUI CLI command and return its output.
  *
  * herdr prints newline-delimited JSON for most socket-API commands
  * (e.g. `{"id":...,"result":{...},"type":...}`). We parse the last JSON line
@@ -19,3 +19,18 @@ export declare class HerdrError extends Error {
 export declare function runHerdr(args: string[], opts?: {
     timeoutMs?: number;
 }): Promise<HerdrResult>;
+/** Run an `hc` (herdr-core) command with JSON output. */
+export declare function runHc(args: string[], opts?: {
+    timeoutMs?: number;
+}): Promise<HerdrResult>;
+/** Run a `herdr-app` command (talks to the open Herdr window). */
+export declare function runApp(args: string[], opts?: {
+    timeoutMs?: number;
+}): Promise<HerdrResult>;
+/**
+ * Call one herdr-core API method over `hc connect` (JSON-RPC over stdio).
+ * Used for reads the CLI doesn't expose, such as the app's layout document.
+ */
+export declare function coreRpc(method: string, params: Record<string, unknown>, opts?: {
+    timeoutMs?: number;
+}): Promise<unknown>;

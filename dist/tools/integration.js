@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { boolFlag } from "./types.js";
+import { runHc } from "../herdr.js";
+import { okJson, boolFlag } from "./types.js";
 // herdr recognizes these agent integrations; herdr-mesh stays agnostic and
 // works with whichever are installed/running.
 export const integrationTools = [
@@ -17,6 +18,10 @@ export const integrationTools = [
             boolFlag(argv, "--outdated-only", undefined, a.outdated_only);
             return argv;
         },
+        core: async () => okJson({
+            note: "herdr-core has no integrations: any program that reports status over OSC 7501 is an agent. Templates are ready-made agent roles (start one with herdr_agent_start argv [template, task]).",
+            templates: (await runHc(["templates"])).json,
+        }),
     },
 ];
 //# sourceMappingURL=integration.js.map

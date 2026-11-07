@@ -1,5 +1,5 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { type ToolDef, execTool } from "./tools/types.js";
+import { type ToolDef, execTool, backendSchema } from "./tools/types.js";
 import { agentTools } from "./tools/agent.js";
 import { sessionTools } from "./tools/session.js";
 import { paneTools } from "./tools/pane.js";
@@ -30,7 +30,7 @@ export function createServer(): McpServer {
       tool.name,
       {
         description: tool.description,
-        inputSchema: tool.inputSchema,
+        inputSchema: { ...tool.inputSchema, backend: backendSchema },
       },
       async (args: Record<string, unknown>) => execTool(tool, args ?? {}),
     );
